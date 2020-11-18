@@ -1,3 +1,4 @@
+import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
 import data.SkierDbConnection;
@@ -17,9 +18,13 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.json.JSONException;
 import org.json.JSONObject;
 import utils.JsonFormatter;
+import utils.RabbitMQChannelFactory;
 
 @WebServlet(name = "SkierServlet")
 public class SkierServlet extends HttpServlet {
@@ -28,12 +33,15 @@ public class SkierServlet extends HttpServlet {
     // RabbitMQ objects
     private final static String QUEUE_NAME = "DB_POST";
     private Connection rmqConn;
+    private ObjectPool<Channel> channelPool;
 
     /**
      * Used to set up RabbitMQ. Does not use the config object.
      */
     public void init(ServletConfig config) throws ServletException  {
         super.init(config);
+
+        // Connection setup
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
         try {
@@ -42,12 +50,23 @@ public class SkierServlet extends HttpServlet {
             e.printStackTrace();
             throw new ServletException("couldn't connect to RabbitMQ");
         }
+
+        // Channel pool setup
+        channelPool= new GenericObjectPool<>(new RabbitMQChannelFactory(rmqConn));
     }
 
+    /**
+     * Cleans up RabbitMQ leftovers.
+     */
     public void destroy() {
         try {
             rmqConn.close();
         } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try {
+            channelPool.clear();
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -93,14 +112,35 @@ public class SkierServlet extends HttpServlet {
         int time = requestJson.getInt(keys[3]);
         int lift = requestJson.getInt(keys[4]);
 
-        // Write the response
+        // Do the request and write response
         PrintWriter out = response.getWriter();
         try {
+            // Get and declare a channel
+            Channel channel = channelPool.borrowObject();
+            //Channel channel = rmqConn.createChannel();
+            channel.queueDeclare(QUEUE_NAME, false, false, false, null);
+
+            // Keep the message as simple as possible, just the arguments.
+            // Consumers will know the schema here.
+            String message = String.format(
+                    "%s %d %d %d %d", resort, day, skier, time, lift);
+            // Send it
+            channel.basicPublish("", QUEUE_NAME, null, message.getBytes());
+            channelPool.returnObject(channel);
+
+            // TODO: Move db processing to consumer program
             dbConn.postLiftRide(resort, day, skier, time, lift);
+
+            // Send a successful response
             response.setStatus(HttpServletResponse.SC_CREATED);
         } catch (SQLException e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             out.println(JsonFormatter.buildError("problem executing SQL: "
+                    + e.getMessage()));  // For development
+        } catch (Exception e) {
+            // Error with RabbitMQ
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            out.println(JsonFormatter.buildError("problem pushing to worker queue: "
                     + e.getMessage()));  // For development
         }
     }
