@@ -18,7 +18,6 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.json.JSONException;
@@ -43,7 +42,9 @@ public class SkierServlet extends HttpServlet {
 
         // Connection setup
         ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
+        //factory.setHost("3.82.190.158");
+        factory.setHost("localhost");  // for local testing
+
         try {
             rmqConn = factory.newConnection();
         } catch (IOException | TimeoutException e) {
@@ -52,7 +53,7 @@ public class SkierServlet extends HttpServlet {
         }
 
         // Channel pool setup
-        channelPool= new GenericObjectPool<>(new RabbitMQChannelFactory(rmqConn));
+        channelPool= new GenericObjectPool<>(new RabbitMQChannelFactory(rmqConn, QUEUE_NAME));
     }
 
     /**
@@ -65,7 +66,7 @@ public class SkierServlet extends HttpServlet {
             e.printStackTrace();
         }
         try {
-            channelPool.clear();
+            channelPool.close();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -119,8 +120,6 @@ public class SkierServlet extends HttpServlet {
         try {
             // Get and declare a channel
             Channel channel = channelPool.borrowObject();
-            //Channel channel = rmqConn.createChannel();
-            channel.queueDeclare(QUEUE_NAME, false, false, false, null);
 
             // Keep the message as simple as possible, just the arguments.
             // Consumers will know the schema here.
@@ -128,15 +127,13 @@ public class SkierServlet extends HttpServlet {
                     "%s,%s,%s,%s,%s", resort, day, skier, time, lift);
             // Send it
             channel.basicPublish("", QUEUE_NAME, null, message.getBytes());
+
+            // Return the channel to the pool
             channelPool.returnObject(channel);
 
             // Send a successful response
             response.setStatus(HttpServletResponse.SC_CREATED);
 
-        } catch (SQLException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            out.println(JsonFormatter.buildError("problem executing SQL: "
-                    + e.getMessage()));  // For development
         } catch (Exception e) {
             // Error with RabbitMQ
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);

@@ -13,15 +13,19 @@ public class RabbitMQChannelFactory
     extends BasePooledObjectFactory<Channel> {
 
     private final Connection conn;
+    private final String queueName;
 
-    public RabbitMQChannelFactory(Connection conn) {
+    public RabbitMQChannelFactory(Connection conn, String queueName) {
         super();
         this.conn = conn;
+        this.queueName = queueName;
     }
 
     @Override
     public Channel create() throws Exception {
-        return conn.createChannel();
+        Channel chan =  conn.createChannel();
+        chan.queueDeclare(queueName, false, false, false, null);
+        return chan;
     }
 
     @Override
