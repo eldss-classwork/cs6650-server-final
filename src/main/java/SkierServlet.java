@@ -29,7 +29,7 @@ import utils.RabbitMQChannelFactory;
 @WebServlet(name = "SkierServlet")
 public class SkierServlet extends HttpServlet {
 
-    private SkierDbConnection dbConn = new SkierDbConnection();
+    private final SkierDbConnection dbConn = new SkierDbConnection();
     // RabbitMQ objects
     private final static String QUEUE_NAME = "DB_POST";
     private Connection rmqConn;
@@ -107,10 +107,12 @@ public class SkierServlet extends HttpServlet {
         };
         // Already validated
         String resort = requestJson.getString(keys[0]);
-        int day = requestJson.getInt(keys[1]);
-        int skier = requestJson.getInt(keys[2]);
-        int time = requestJson.getInt(keys[3]);
-        int lift = requestJson.getInt(keys[4]);
+        // Don't need to convert to ints because these will be sent
+        // to a queue anyways.
+        String day = requestJson.getString(keys[1]);
+        String skier = requestJson.getString(keys[2]);
+        String time = requestJson.getString(keys[3]);
+        String lift = requestJson.getString(keys[4]);
 
         // Do the request and write response
         PrintWriter out = response.getWriter();
@@ -123,16 +125,14 @@ public class SkierServlet extends HttpServlet {
             // Keep the message as simple as possible, just the arguments.
             // Consumers will know the schema here.
             String message = String.format(
-                    "%s %d %d %d %d", resort, day, skier, time, lift);
+                    "%s,%s,%s,%s,%s", resort, day, skier, time, lift);
             // Send it
             channel.basicPublish("", QUEUE_NAME, null, message.getBytes());
             channelPool.returnObject(channel);
 
-            // TODO: Move db processing to consumer program
-            dbConn.postLiftRide(resort, day, skier, time, lift);
-
             // Send a successful response
             response.setStatus(HttpServletResponse.SC_CREATED);
+
         } catch (SQLException e) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             out.println(JsonFormatter.buildError("problem executing SQL: "
