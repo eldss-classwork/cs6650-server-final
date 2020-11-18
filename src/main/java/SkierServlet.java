@@ -1,3 +1,5 @@
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
 import data.SkierDbConnection;
 import data.models.JSONable;
 import exceptions.EmptyPathException;
@@ -7,7 +9,9 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServlet;
@@ -21,6 +25,32 @@ import utils.JsonFormatter;
 public class SkierServlet extends HttpServlet {
 
     private SkierDbConnection dbConn = new SkierDbConnection();
+    // RabbitMQ objects
+    private final static String QUEUE_NAME = "DB_POST";
+    private Connection rmqConn;
+
+    /**
+     * Used to set up RabbitMQ. Does not use the config object.
+     */
+    public void init(ServletConfig config) throws ServletException  {
+        super.init(config);
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost("localhost");
+        try {
+            rmqConn = factory.newConnection();
+        } catch (IOException | TimeoutException e) {
+            e.printStackTrace();
+            throw new ServletException("couldn't connect to RabbitMQ");
+        }
+    }
+
+    public void destroy() {
+        try {
+            rmqConn.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     /**
      * Handle POST requests.
