@@ -1,6 +1,7 @@
 import com.rabbitmq.client.Channel;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import com.rabbitmq.client.MessageProperties;
 import data.SkierDbConnection;
 import data.models.JSONable;
 import exceptions.EmptyPathException;
@@ -30,7 +31,7 @@ public class SkierServlet extends HttpServlet {
 
     private final SkierDbConnection dbConn = new SkierDbConnection();
     // RabbitMQ objects
-    private final static String QUEUE_NAME = "DB_POST";
+    private final static String QUEUE_NAME = "DB_POST_DURABLE";
     private Connection rmqConn;
     private ObjectPool<Channel> channelPool;
 
@@ -42,8 +43,8 @@ public class SkierServlet extends HttpServlet {
 
         // Connection setup
         ConnectionFactory factory = new ConnectionFactory();
-        //factory.setHost("3.82.190.158");
-        factory.setHost("localhost");  // for local testing
+        factory.setHost("54.90.78.126");
+        //factory.setHost("localhost");  // for local testing
 
         try {
             rmqConn = factory.newConnection();
@@ -126,7 +127,11 @@ public class SkierServlet extends HttpServlet {
             String message = String.format(
                     "%s,%s,%s,%s,%s", resort, day, skier, time, lift);
             // Send it
-            channel.basicPublish("", QUEUE_NAME, null, message.getBytes());
+            channel.basicPublish(
+                    "",
+                    QUEUE_NAME,
+                    MessageProperties.PERSISTENT_TEXT_PLAIN,
+                    message.getBytes());
 
             // Return the channel to the pool
             channelPool.returnObject(channel);

@@ -24,7 +24,8 @@ public class RabbitMQChannelFactory
     @Override
     public Channel create() throws Exception {
         Channel chan =  conn.createChannel();
-        chan.queueDeclare(queueName, false, false, false, null);
+        boolean durable = true;
+        chan.queueDeclare(queueName, durable, false, false, null);
         return chan;
     }
 

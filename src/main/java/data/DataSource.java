@@ -19,8 +19,8 @@ public class DataSource {
         int cores = Runtime.getRuntime().availableProcessors();
         int poolSizeLocal =
                 (cores * 2) + 1;  // simplified from rule of thumb provided on hikari github README
-        if (poolSizeLocal < 20) {
-            poolSizeLocal = 20;
+        if (poolSizeLocal < 10) {
+            poolSizeLocal = 10;
         }
 
         config.setJdbcUrl(dbUrl);
